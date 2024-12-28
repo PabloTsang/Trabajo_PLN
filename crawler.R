@@ -2,6 +2,8 @@ library(rvest)
 library(httr)
 library(quanteda)
 library(reticulate)
+library(ggplot2)
+
 limpiar_html <- function(lineas){
   
   contenido <- grep('.*<p>.*</p>',lineas, perl = TRUE, value = TRUE)
@@ -65,7 +67,7 @@ sacar_keywords <- function(lineas){
   return(keywords_sin_ws)
 }
 source_python("prueba_selnium_r.py")
-thc_crawler <- function(url_articulo, tiempo_espera, num_articulos) {
+thc_crawler <- function(url_articulo, tiempo_espera, duracion) {
   # Llamar al crawler de Python para obtener las URLs relacionadas
   urls <- get_urls_rel(url_articulo)
   
@@ -76,8 +78,9 @@ thc_crawler <- function(url_articulo, tiempo_espera, num_articulos) {
   corpus <- list()  # Para almacenar los artículos descargados
   visited_urls <- c()  # Para rastrear las URLs que ya hemos visitado
   
-  # Mientras no hayamos llegado al número deseado de artículos
-  while(length(corpus) < num_articulos) {
+  # Mientras no hayamos llegado al tiempo impuesto
+  inicio <- Sys.time()
+  while(as.numeric(difftime(Sys.time(), inicio, units = "secs")) < duracion) {
     # Elegir una URL relacionada de la lista (solo si no se ha visitado antes)
     url <- urls[1]
     urls <- urls[-1]  # Eliminar la URL seleccionada de la lista de URLs a explorar
@@ -146,6 +149,68 @@ thc_crawler <- function(url_articulo, tiempo_espera, num_articulos) {
   return(quanteda_corpus)
 }
 
-resultado <- thc_crawler("https://theconversation.com/por-que-tergiversamos-la-informacion-cuando-amenaza-nuestras-creencias-asi-funciona-el-razonamiento-motivado-243555",tiempo_espera =  2, num_articulos = 10)
+resultado <- thc_crawler("https://theconversation.com/por-que-tergiversamos-la-informacion-cuando-amenaza-nuestras-creencias-asi-funciona-el-razonamiento-motivado-243555",tiempo_espera =  1, duracion = 14400)
 print(resultado)
 docvarss <- docvars(resultado)
+
+#Realizamos una ordenación para presentar los autores más frecuentes
+autores_mas_frecuentes <- topfeatures(dfm(tokens(docvarss$autoria, what="sentence")))
+
+#Realizamos una ordenación para presentar cuáles son las instituciones con más publicaciones
+instituciones_mas_frecuentes <- topfeatures(dfm(tokens(docvarss$institucion, what = "sentence")))
+
+#Calculamos el número de artículos
+numero_articulos <- length(resultado)
+
+#Convertimos las keywords en tokens, eliminamos las stopwords para quedarnos sólo
+#con las palabras esenciales, las convertimos en minúsculas y posteriormente en 
+#un dataframe para realizar la nube de palabras
+tokens <- tokens(docvarss$keywords, remove_punct = TRUE)
+sin_stopwords <- tokens_remove(tokens, pattern = stopwords("es"))
+token_minuscula <- tolower(sin_stopwords)
+dfm <- dfm(token_minuscula)
+#Asignamos una semilla para evitar la aletoriedad
+set.seed(123)
+nube_keywords <- quanteda.textplots::textplot_wordcloud(dfm)
+
+#asignamos una lista para su posterior uso a la hora de modificar las fechas
+meses <- c("enero" = "01", "febrero" = "02", "marzo" = "03", "abril" = "04", 
+           "mayo" = "05", "junio" = "06", "julio" = "07", "agosto" = "08", 
+           "septiembre" = "09", "octubre" = "10", "noviembre" = "11", "diciembre" = "12")
+
+publicacion_cambiado <- docvarss$publicacion
+
+#cambiar el nombre de los meses por su correspondiente valor numérico
+for (mes in names(meses)) {
+  publicacion_cambiado <- gsub(mes, meses[mes], publicacion_cambiado, ignore.case = TRUE)
+}
+
+#Sólo nos quedamos con la fecha y eliminamos la hora
+solo_fecha <- lapply(publicacion_cambiado, function(x){
+  substr(x, 1, nchar(x) - 10)
+})
+#Modificamos la separación acorde según el formato de las funciones empleadas
+fecha_final <- gsub("\\s", "-", solo_fecha)
+
+#Convertimos el string en una fecha,m  y posteriormente en un dataframe
+fechas <- as.Date(fecha_final, format = "%d-%m-%Y")
+datos <- data.frame(
+  fecha = fechas
+)
+
+#creamos un rango de fechas para el índice del timeline
+rango_fechas <- seq(min(fechas), max(fechas), by = "6 month")
+
+#creación del timeline
+ggplot(datos, aes(x = fechas)) +
+  geom_segment(aes(xend = fechas, y = 0, yend = 1), color = "blue", size = 0.5) + 
+  scale_x_date(
+    breaks = rango_fechas, 
+    date_labels = "%d-%m-%Y"
+  ) + 
+  labs(x = "Fecha", y = NULL, title = "Línea Temporal") +
+  theme_minimal() +
+  theme(
+    axis.text.y = element_blank(), 
+    axis.text.x = element_text(angle = 45, hjust = 1)
+  )
