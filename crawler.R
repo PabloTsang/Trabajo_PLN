@@ -149,15 +149,15 @@ thc_crawler <- function(url_articulo, tiempo_espera, duracion) {
   return(quanteda_corpus)
 }
 
-resultado <- thc_crawler("https://theconversation.com/por-que-tergiversamos-la-informacion-cuando-amenaza-nuestras-creencias-asi-funciona-el-razonamiento-motivado-243555",tiempo_espera =  1, duracion = 14400)
+resultado <- thc_crawler("https://theconversation.com/por-que-tergiversamos-la-informacion-cuando-amenaza-nuestras-creencias-asi-funciona-el-razonamiento-motivado-243555",tiempo_espera =  1, duracion = 28800)
 print(resultado)
 docvarss <- docvars(resultado)
 
 #Realizamos una ordenación para presentar los autores más frecuentes
-autores_mas_frecuentes <- topfeatures(dfm(tokens(docvarss$autoria, what="sentence")))
+autores_mas_frecuentes<- sort(table(docvarss$autoria), decreasing = TRUE)[1:10]
 
 #Realizamos una ordenación para presentar cuáles son las instituciones con más publicaciones
-instituciones_mas_frecuentes <- topfeatures(dfm(tokens(docvarss$institucion, what = "sentence")))
+instituciones_mas_frecuentes <- sort(table(docvarss$institucion), decreasing = TRUE)[1:10]
 
 #Calculamos el número de artículos
 numero_articulos <- length(resultado)
