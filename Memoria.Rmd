@@ -1,0 +1,534 @@
+---
+title: "Memoria_Grupo7_PLN"
+author: "Grupo 7"
+date: "2024-12-14"
+output: pdf_document
+---
+
+## Información Integrantes
+
+Número de grupo: 7
+Emails de los integrantes y tareas:
+- abdelaziz.aarourou@alumnos.upm.es
+- daniel.barahonamor@alumnos.upm.es
+- jl.garcia.arocas@alumnos.upm.es
+- lucia.mmiramontes@alumnos.upm.es
+- pablo.tsang@alumnos.upm.es
+
+
+## Introducción
+La práctica en cuestión tiene como objetivo desarrollar un crawler básico para una página web publicadora de artículos científicos
+llamada The Conversation (THC). Este funcionará de forma que se recolecten el texto de los artículos en documentos con sus respectivas
+urls como docvars además de otra información relevante del artículo, para esto se tendrá que escribir código que permita extraer y 
+limpiar los artículos, que permita obtener una lista de 4 urls correspondientes a artículos relacionados los cuales también se incluirán
+en el corpus, y por supuesto el crawler en sí.
+Finalmente, con los datos recopilados se podrán realizar análisis para responder preguntas sobre estadísticas de publicación y contenido, empleando técnicas de análisis textual y visualización de datos.
+
+
+# Pregunta 1
+Enunciado: Haz un programa thc_extract.R que lea un fichero .html y genere el texto del artículo.
+
+Código fuente:
+```{r extract no extendido}
+library(rvest)
+library(httr)
+
+# función de obtención de contenido del HTML y limpieza de este
+limpiar_html <- function(lineas){
+  
+  contenido <- grep('.*<p>.*</p>',lineas, perl = TRUE, value = TRUE)
+  solo_parrafos <- contenido[-grep('.*<p><.*>.*</.*></p>', contenido, perl = TRUE)]
+  parrafos_sin_ws <- trimws(solo_parrafos, which = "both", whitespace = "[ \t\r\n]")
+  sin_marks_parrafo <- gsub('<p>(.*)</p>', '\\1', parrafos_sin_ws)
+  patron_etiquetas <- '<(/?a.*?|/?em|/?li|/?strong|/?div.*?)>'
+  sin_etiquetas <- sapply(sin_marks_parrafo, function(x) gsub(patron_etiquetas, '', x))
+  contenido_limpio <- paste(sin_etiquetas, collapse = "\n")
+  
+  return(contenido_limpio)
+}
+
+# función principal, obtención del HTML a partir del url y retorna en artículo limpio mediante limpiar_html
+extraer_articulo <- function(url){
+  contenido <- tryCatch({
+    readLines(url, warn = FALSE)
+  }, error = function(e) {
+    message(paste("Error al descargar la URL:", url))
+    return(NULL)
+  })
+  
+  if (is.null(contenido)) {
+    message("Error al extraer el contenido de la url.")
+    return(NULL)
+  }
+  
+  texto <- limpiar_html(contenido)
+  
+  if (nchar(texto) == 0) {
+    message("No se ha extraído ningún texto.")
+    return(NULL)
+  }
+  
+  return(texto)
+}
+
+```
+
+
+Explicación y Dificultades:
+El objetivo del archivo thc_extract.R es extraer a partir de un fichero html correspondiente a un artículo de THC el texto de dicho artículo, además de limpiar este mediante la eliminación de elementos de marcado HTML, generando de esta forma el texto del artículo únicamente. Más concretamente el texto a extraer es aquel contenido entre <p> y </p> a partir de la linea con la sentencia itemprop="articleBody".
+
+Para esto se ha definido una función limpiar_html que realiza tanto la extracción del texto del archivo html como la limpieza de este, y para completar el archivo R se añade una función que extrae el texto directamente de la url correspondiente al archivo de la página THC y que utiliza la función anterior para obtener el texto final, con el objetivo de realizar pruebas.
+
+La función limpiar_html recibe como parámetro de entrada la cadena de texto que consiste en el contenido HTML extraído de la página web, primeramente se limita a extraer todos los párrafos de dicho HTML, es decir, todo texto que se ecuentra entre las etiquetas <p> y </p>, con la expresión regular ".*<p>.*</p>" y permitiendo las expresiones regulares Perl, seguidamente se elimina del vector contenido resultante aquellos párrafos que contienen únicamente otras etiquetas HTML como "<p><span>...</span></p>", de esta manera eliminamos todo párrafo que no contenga texto del artículo. Se eliminan los espacios en blanco con trimws incluyendo tabulaciones y saltos de línea. Se eliminan ya del texto las etiquetas HTML, empezando por las de párrafos y luego las etiquetas de tipo <a>, <em>, <li>, <strong> y <div>, además en la expresión regular se usa /? para que se capturen tanto las etiquetas de apertura como las de cerrar. Esto se hace mediante sapply que aplica el gsub a cada párrafo. Ya finalmente con el vector de párrafos llamado sin_etiquetas unimos todos sus elementos usando el salto de línea "\n" como unión para generar lo que sería el texto del artículo completamente limpio y devolverlo.
+
+Finalmente en la fución extraer_artículo como se ha explicado antes simplemente se extrae lo que sería la cadena de texto HTML de la url con readLines y usando tryCatch para poder manejar casos de error como errores de network o urls inválidas, devolviendo un mensaje y retornando NULL en la función, con este contenido extraído simplemente se aplica la función limpiar_html para devolver el texto limpio y se añade el manejo de ciertos casos como el de que el contenido extraído del url sea vacío o que el texto limpio de ese sea también vacío, en ambos casos retornando NULL. 
+
+Es importante notar que al saber que se estará trabajando con artículos todos provenientes de la misma plataforma asumimos una consistencia en el formato de los HTMLs a manejar lo que nos ha permitido simplificar el proceso de obtención del texto.  
+
+Pruebas y Resultados:
+
+```{r extract pruebas}
+
+echo = TRUE
+url_art <- "https://theconversation.com/los-dumbphones-o-telefonos-tontos-una-ayuda-en-la-tendencia-de-la-desconexion-digital-246452"
+articulo <- extraer_articulo(url_art)
+cat(articulo)
+
+```
+
+
+
+# Pregunta 2
+Enunciado: Extiende el programa anterior para que también se muestren las URLs de los artículos relacionados.
+
+Código fuente (archivo):
+```{r extract extendido}
+library(rvest)
+library(httr)
+library(reticulate)
+
+# función de obtención de contenido del HTML y limpieza de este
+limpiar_html <- function(lineas){
+  
+  contenido <- grep('.*<p>.*</p>',lineas, perl = TRUE, value = TRUE)
+  solo_parrafos <- contenido[-grep('.*<p><.*>.*</.*></p>', contenido, perl = TRUE)]
+  parrafos_sin_ws <- trimws(solo_parrafos, which = "both", whitespace = "[ \t\r\n]")
+  sin_marks_parrafo <- gsub('<p>(.*)</p>', '\\1', parrafos_sin_ws)
+  patron_etiquetas <- '<(/?a.*?|/?em|/?li|/?strong|/?div.*?)>'
+  sin_etiquetas <- sapply(sin_marks_parrafo, function(x) gsub(patron_etiquetas, '', x))
+  contenido_limpio <- paste(sin_etiquetas, collapse = "\n")
+  
+  return(contenido_limpio)
+}
+
+source_python("prueba_selnium_r.py")
+# función principal, obtención del HTML a partir del url y retorna en artículo limpio mediante limpiar_html además de la lista de url relacionadas
+extraer_articulo <- function(url){
+  contenido <- tryCatch({
+    readLines(url, warn = FALSE)
+  }, error = function(e) {
+    message(paste("Error al descargar la URL:", url))
+    return(NULL)
+  })
+  
+  if (is.null(contenido)) {
+    message("Error al extraer el contenido de la url.")
+    return(NULL)
+  }
+  
+  texto <- limpiar_html(contenido)
+  
+  if (nchar(texto) == 0) {
+    message("No se ha extraído ningún texto.")
+    return(NULL)
+  }
+  
+  # obtener lista de urls relacionadas
+  urls_rel <- get_urls_rel(url)
+  
+  return(list(texto = texto, urls_rel = urls_rel))
+}
+
+
+```
+
+
+
+Código fuente (archivo python para scrapping):
+```{python function}
+import time
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.common.keys import Keys
+from typing import List, Optional
+
+
+def get_urls_rel(articulo: str, timeout: int = 60) -> Optional[List[str]]:
+    start_time = time.time()  # Marca el inicio de la ejecución
+    driver = webdriver.Chrome()
+
+    try:
+        driver.get(articulo)
+
+        # Aceptación de cookies
+        try:
+            if time.time() - start_time > timeout:
+                raise TimeoutError("Tiempo límite excedido.")
+            WebDriverWait(driver, 10).until(
+                EC.element_to_be_clickable((By.XPATH, '//*[@id="didomi-notice-agree-button"]'))
+            ).click()
+        except Exception:
+            print("Cookies no encontradas")
+
+        # Manejo de pop-ups
+        try:
+            if time.time() - start_time > timeout:
+                raise TimeoutError("Tiempo límite excedido.")
+            popup = WebDriverWait(driver, timeout=2).until(
+                EC.element_to_be_clickable((By.XPATH, '//*[@id="__next"]/div[2]/div/div[2]/div/div/div[2]/button/svg'))
+            )
+            popup.click()
+        except Exception:
+            print("No hay popup1")
+
+        try:
+            if time.time() - start_time > timeout:
+                raise TimeoutError("Tiempo límite excedido.")
+            popup2 = WebDriverWait(driver, timeout=2).until(
+                EC.element_to_be_clickable((By.XPATH, '/html/body/div[5]/div[3]/div/div[1]/button'))
+            )
+            popup2.click()
+        except Exception:
+            print("No hay popup2")
+
+        # Scroll y búsqueda de URLs relacionadas
+        try:
+            body = driver.find_element(By.TAG_NAME, "body")
+
+            while not driver.find_elements(By.XPATH, '//*[@id="article"]/div[2]/div/div/div/div/article/header/h2/a'):
+                if time.time() - start_time > timeout:
+                    raise TimeoutError("Tiempo límite excedido.")
+                body.send_keys(Keys.PAGE_DOWN)
+                time.sleep(0.1)
+
+            elements = WebDriverWait(driver, 10).until(
+                EC.presence_of_all_elements_located(
+                    (By.XPATH, '//*[@id="article"]/div[2]/div/div/div/div/article/header/h2/a')
+                )
+            )
+
+            urls_relacionadas = list(set(element.get_attribute("href") for element in elements))
+
+        except Exception as e:
+            print("No hay URLs o ocurrió un error:", str(e))
+            return None
+
+    except TimeoutError as e:
+        print("El proceso tardó más de 60 segundos y fue terminado:", str(e))
+        return None
+
+    except Exception as e:
+        print("Ha ocurrido un error al acceder al artículo:", str(e))
+        return None
+
+    finally:
+        # Asegurarse de cerrar el navegador
+        driver.quit()
+
+    return urls_relacionadas
+
+```
+
+
+Explicación y Dificultades:
+En este caso se busca extender el archivo thc_extract.R anterior de manera que no solo obtenga el texto de un artículo limpio si no que, al final de cada artículo en THC hay una sección de artículos relacionados con el actial donde se incluyen 4 artículos adicionales y se quiere devolver las urls de estos para poder extraer información de ellos en el crawler.
+
+Para lograr este fin, en adición a la función limpiar_html se ha creado una función nueva llamada get_urls_rel y definida en un archivo python que realiza web scrapping mediante la librería Selenium a la página del artículo y extrae las 4 urls adicionales. Este archivo es intergrado en thc_extract_extendido.R mediante la librería reticulate, que implementa la función source_python("prueba_selnium_r.py"). Al ejecutarse esta sentencia se ejecuta el archivo python definido de forma que la función definida en este se guarda en el entorno de R y puede ser llamada.
+
+Esta función toma la url del artículo principal y un valor de timeout (cuyo valor implícito es 60 segundos) para determinar cuando se considera un error y usa Chrome como driver. Mediante bloques try-except se trata de aceptar las cookies de la página automatizadamente identificando y clickeando en el botón, seguidamente hay un manejo de pop-ups, en concreto dos pop-ups específicos que podrían saltar, en este caso solo habría que identificarlos mediante el path y clickearlos para seguir. 
+
+Una vez resuelto esto se pasa a la obtención de las urls en la sección denominada "También le podría interesar", para ello se baja por la página, es decir, se simula la accion de "scroll down", identificamos el elemento body que será el principal de la página y mediante un bucle while se realiza la accion de body.send_keys(Keys.PAGE_DOWN) desde el body hasta que se identifique el elemento correspondiente a las urls de los artículos relacionados, esto lo que hace es deslizar la página hacia abajo, una vez se identifiquen dichos elementos se sale del bucle y se acumulan en la variable elements, finalmente se itera por esta obteniendo cada uno de los "elements" recogidos que deberían ser 4 y de estos se extrae el valor de su atributo href que contiene en sí la url como string, y estos se almacenan en una lista llamada urls_relacionadas que será la que retorne dicha función.
+
+Vemos que en todas las acciones hay una gestión de errores con except tal que si saltan estos la función devuelva None y se imprima un mensaje indicando el contexto de dicho error. A mayores hay un control de timeout a lo largo de las acciones principales de la función de manera que si el tiempo actual menos el tiempo de comienzo (es decir la duración de la ejecución) has superado el límite de tiempo definido se pare la ejecución is se levante un TimeoutError.
+
+Volviendo al archivo R, la modificación incluye una llamada a la función get_urls_rel desde la función extraer_articulo explicada en el apartado anterior. Dentro de esta se mete como parámetro de entrada la url de la cual se acaba de extraer el texto del artículo, y se guarda el valor retornado, es decir la lista de urls relacionadas, en una variable urls_rel que será retornada junto con el texto limpio en una lista, siendo el texto el primer elemento y la lista de urls el segundo. 
+
+
+
+Pruebas y Resultados:
+
+```{r extract pruebas}
+
+echo = TRUE
+url_art <- "https://theconversation.com/los-dumbphones-o-telefonos-tontos-una-ayuda-en-la-tendencia-de-la-desconexion-digital-246452"
+artic_con_urls <- extraer_articulo(url_art)
+articulo <- artic_con_urls$texto
+urls <- artic_con_urls$urls_rel
+cat(articulo)
+print(urls)
+
+```
+
+
+
+# Pregunta 3
+Enunciado: Haz un programa thc_crawler.R ...
+
+Código fuente:
+```{r crawler}
+
+
+```
+
+
+Explicación y Dificultades:
+
+Pruebas y Resultados:
+
+# Pregunta 4
+Enunciado: Modifica el programa anterior para incluir esta información como docvars.
+
+Código fuente:
+```{r crawler modificado}
+library(rvest)
+library(httr)
+library(quanteda)
+library(reticulate)
+library(ggplot2)
+
+limpiar_html <- function(lineas){
+  
+  contenido <- grep('.*<p>.*</p>',lineas, perl = TRUE, value = TRUE)
+  solo_parrafos <- contenido[-grep('.*<p><.*>.*</.*></p>', contenido, perl = TRUE)]
+  parrafos_sin_ws <- trimws(solo_parrafos, which = "both", whitespace = "[ \t\r\n]")
+  sin_marks_parrafo <- gsub('<p>(.*)</p>', '\\1', parrafos_sin_ws)
+  patron_etiquetas <- '<(/?a.*?|/?em|/?li|/?strong|/?div.*?)>'
+  sin_etiquetas <- sapply(sin_marks_parrafo, function(x) gsub(patron_etiquetas, '', x))
+  contenido_limpio <- paste(sin_etiquetas, collapse = "\n")
+  
+  return(contenido_limpio)
+}
+sacar_publicacion <- function(lineas){
+  
+  patron_publicacion <- '<time datetime=.*>Publicado: (.*)</time>'
+  publicacion_sucio <- grep(patron_publicacion, lineas, perl = TRUE, value = TRUE)
+  publicacion_limpio <- gsub(patron_publicacion,'\\1', publicacion_sucio)
+  publicacion_sin_ws <- trimws(publicacion_limpio, which = "both", whitespace = " ") 
+  
+  return(publicacion_sin_ws)
+}
+
+sacar_autoria <- function(lineas){
+  
+  patron_autor <- '<meta name="author" content="(.*)" />'
+  autor_sucio <- grep(patron_autor, lineas, perl = TRUE, value = TRUE)
+  autor_limpio <- gsub(patron_autor, '\\1', autor_sucio)
+  autor_sin_ws <- trimws(autor_limpio, which = "both", whitespace = " ")
+  
+  return(autor_sin_ws)
+}
+
+sacar_institucion <- function(lineas){
+  
+  patron_institucion <- '.*<em class="institution_name">(.*)</em>'
+  institucion_sucio <- grep(patron_institucion, lineas, perl = TRUE, value = TRUE)
+  institucion_limpio <- gsub(patron_institucion, '\\1', institucion_sucio)
+  institucion_sin_ws <- trimws(institucion_limpio, which = "both", whitespace = " ")
+  
+  return(institucion_sin_ws)
+}
+
+sacar_descripcion <- function(lineas){
+  
+  patron_descripcion <- '<meta property="og:description" content=(.*)/>'
+  descripcion_sucio <- grep(patron_descripcion, lineas, perl = TRUE, value = TRUE)
+  descripcion_limpio <- gsub(patron_descripcion, '\\1', descripcion_sucio)
+  descripcion_limpio <- substring(descripcion_limpio, 2, nchar(descripcion_limpio)-2)
+  descripcion_sin_ws <- trimws(descripcion_limpio, which = "both", whitespace = " ")
+  
+  return(descripcion_sin_ws)
+}
+
+sacar_keywords <- function(lineas){
+  
+  patron_keywords <- '<meta name="news_keywords" content="(.*?)" />'
+  keywords_sucio <- grep(patron_keywords, lineas, perl = TRUE, value = TRUE)
+  keywords_limpio <- gsub(patron_keywords, '\\1', keywords_sucio)
+  keywords_sin_ws <- trimws(keywords_limpio, which = "both", whitespace = " ")
+  
+  return(keywords_sin_ws)
+}
+source_python("prueba_selnium_r.py")
+thc_crawler <- function(url_articulo, tiempo_espera, duracion) {
+  # Llamar al crawler de Python para obtener las URLs relacionadas
+  urls <- get_urls_rel(url_articulo)
+  
+  if (is.null(urls)) {
+    stop("No se pudieron obtener URLs relacionadas.")
+  }
+  
+  corpus <- list()  # Para almacenar los artículos descargados
+  visited_urls <- c()  # Para rastrear las URLs que ya hemos visitado
+  
+  # Mientras no hayamos llegado al tiempo impuesto
+  inicio <- Sys.time()
+  while(as.numeric(difftime(Sys.time(), inicio, units = "secs")) < duracion) {
+    # Elegir una URL relacionada de la lista (solo si no se ha visitado antes)
+    url <- urls[1]
+    urls <- urls[-1]  # Eliminar la URL seleccionada de la lista de URLs a explorar
+    if (url %in% visited_urls) {
+      next  # Si ya hemos visitado esta URL, saltamos al siguiente
+    }
+    
+    # Agregar la URL a la lista de URLs visitadas
+    visited_urls <- c(visited_urls, url)
+    
+    # Descargar contenido
+    contenido <- tryCatch({
+      readLines(url, warn = FALSE)
+    }, error = function(e) {
+      message(paste("Error al descargar la URL:", url))
+      return(NULL)
+    })
+    
+    if (is.null(contenido)) next
+    
+    # Limpiar y extraer la información
+    texto <- limpiar_html(contenido)
+    publicacion <- sacar_publicacion(contenido)
+    autoria <- sacar_autoria(contenido)
+    institucion <- sacar_institucion(contenido)
+    descripcion <- sacar_descripcion(contenido)
+    keywords <- sacar_keywords(contenido)
+    
+    # Guardar en el corpus
+    documento <- list(
+      texto = texto,
+      publicacion = publicacion,
+      autoria = autoria,
+      institucion = institucion,
+      descripcion = descripcion,
+      keywords = keywords,
+      url = url
+    )
+    corpus[[length(corpus) + 1]] <- documento
+    
+    # Obtener más URLs relacionadas del artículo actual
+    urls_relacionadas <- get_urls_rel(url)
+    
+    # Añadir estas nuevas URLs a la lista de URLs a explorar
+    if (!is.null(urls_relacionadas)) {
+      # Filtrar URLs para que no estén ya en la lista
+      urls <- unique(c(urls, setdiff(urls_relacionadas, visited_urls)))
+    }
+    
+    Sys.sleep(tiempo_espera)  # Esperar antes de cada nueva petición
+  }
+  
+  # Crear un corpus de quanteda con los textos descargados
+  docs <- sapply(corpus, function(doc) doc$texto)
+  metadata <- data.frame(
+    publicacion = sapply(corpus, function(doc) ifelse(is.null(doc$publicacion), "", doc$publicacion)),
+    autoria = sapply(corpus, function(doc) ifelse(is.null(doc$autoria), "", doc$autoria)),
+    institucion = sapply(corpus, function(doc) ifelse(is.null(doc$institucion), "", doc$institucion)),
+    descripcion = sapply(corpus, function(doc) ifelse(is.null(doc$descripcion), "", doc$descripcion)),
+    keywords = sapply(corpus, function(doc) ifelse(is.null(doc$keywords), "", doc$keywords)),
+    url = sapply(corpus, function(doc) ifelse(is.null(doc$url), "", doc$url)),
+    stringsAsFactors = FALSE
+  )
+  
+  quanteda_corpus <- corpus(docs, docvars = metadata)
+  return(quanteda_corpus)
+}
+
+resultado <- thc_crawler("https://theconversation.com/por-que-tergiversamos-la-informacion-cuando-amenaza-nuestras-creencias-asi-funciona-el-razonamiento-motivado-243555",tiempo_espera =  1, duracion = 28800)
+print(resultado)
+docvarss <- docvars(resultado)
+
+#Realizamos una ordenación para presentar los autores más frecuentes
+autores_mas_frecuentes<- sort(table(docvarss$autoria), decreasing = TRUE)[1:10]
+
+#Realizamos una ordenación para presentar cuáles son las instituciones con más publicaciones
+instituciones_mas_frecuentes <- sort(table(docvarss$institucion), decreasing = TRUE)[1:10]
+
+#Calculamos el número de artículos
+numero_articulos <- length(resultado)
+
+#Convertimos las keywords en tokens, eliminamos las stopwords para quedarnos sólo
+#con las palabras esenciales, las convertimos en minúsculas y posteriormente en 
+#un dataframe para realizar la nube de palabras
+tokens <- tokens(docvarss$keywords, remove_punct = TRUE)
+sin_stopwords <- tokens_remove(tokens, pattern = stopwords("es"))
+token_minuscula <- tolower(sin_stopwords)
+dfm <- dfm(token_minuscula)
+#Asignamos una semilla para evitar la aletoriedad
+set.seed(123)
+nube_keywords <- quanteda.textplots::textplot_wordcloud(dfm)
+
+#asignamos una lista para su posterior uso a la hora de modificar las fechas
+meses <- c("enero" = "01", "febrero" = "02", "marzo" = "03", "abril" = "04", 
+           "mayo" = "05", "junio" = "06", "julio" = "07", "agosto" = "08", 
+           "septiembre" = "09", "octubre" = "10", "noviembre" = "11", "diciembre" = "12")
+
+publicacion_cambiado <- docvarss$publicacion
+
+#cambiar el nombre de los meses por su correspondiente valor numérico
+for (mes in names(meses)) {
+  publicacion_cambiado <- gsub(mes, meses[mes], publicacion_cambiado, ignore.case = TRUE)
+}
+
+#Sólo nos quedamos con la fecha y eliminamos la hora
+solo_fecha <- lapply(publicacion_cambiado, function(x){
+  substr(x, 1, nchar(x) - 10)
+})
+#Modificamos la separación acorde según el formato de las funciones empleadas
+fecha_final <- gsub("\\s", "-", solo_fecha)
+
+#Convertimos el string en una fecha,m  y posteriormente en un dataframe
+fechas <- as.Date(fecha_final, format = "%d-%m-%Y")
+datos <- data.frame(
+  fecha = fechas
+)
+
+#creamos un rango de fechas para el índice del timeline
+rango_fechas <- seq(min(fechas), max(fechas), by = "6 month")
+
+#creación del timeline
+ggplot(datos, aes(x = fechas)) +
+  geom_segment(aes(xend = fechas, y = 0, yend = 1), color = "blue", size = 0.5) + 
+  scale_x_date(
+    breaks = rango_fechas, 
+    date_labels = "%d-%m-%Y"
+  ) + 
+  labs(x = "Fecha", y = NULL, title = "Línea Temporal") +
+  theme_minimal() +
+  theme(
+    axis.text.y = element_blank(), 
+    axis.text.x = element_text(angle = 45, hjust = 1)
+  )
+```
+
+
+Explicación y Dificultades: 
+
+Pruebas y Resultados:
+```{r pruebas crawler}
+resultado <- thc_crawler("https://theconversation.com/por-que-tergiversamos-la-informacion-cuando-amenaza-nuestras-creencias-asi-funciona-el-razonamiento-motivado-243555",tiempo_espera =  2, num_articulos = 10)
+print(resultado)
+docvarss <- docvars(resultado)
+```
+
+
+# Cuestiones a responder
+
+4.1. ¿Tu crawler puede escapar de “referencias circulares” (cuando en los artículos relacionados está el artículo
+inicial)? Si no lo hace, ¿cómo podría hacerlo?.
+
+4.2. Deja funcionando tu crawler “toda una noche”, con un tiempo entre artículos de 1 segundo, y un
+artículo inicial de la sección de “Ciencia + Tecnología”. ¿Cuántos artículos has obtenido?. ¿Cuál es el autor
+con más publicaciones?. ¿Y la institución que más publica?. Haz una nube de palabras con las palabras
+clave de los artículos obtenidos. Muestra una gráfica (línea temporal) con las fechas de las publicaciones.
+Alternativamente, si no pudiste hacer el crawler, responde las mismas preguntas sobre el corpus quanteda
+que creaste en el apartado 3.
