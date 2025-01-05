@@ -243,7 +243,7 @@ def get_urls_rel(articulo: str, timeout: int = 60) -> Optional[List[str]]:
 
 
 Explicación y Dificultades:
-En este caso se busca extender el archivo thc_extract.R anterior de manera que no solo obtenga el texto de un artículo limpio si no que, al final de cada artículo en THC hay una sección de artículos relacionados con el actial donde se incluyen 4 artículos adicionales y se quiere devolver las urls de estos para poder extraer información de ellos en el crawler.
+En este caso se busca extender el archivo thc_extract.R anterior de manera que no solo obtenga el texto de un artículo limpio si no que, al final de cada artículo en THC hay una sección de artículos relacionados con el actual, donde se incluyen 4 artículos adicionales y se quiere devolver las urls de estos para poder extraer información de ellos en el crawler.
 
 Para lograr este fin, en adición a la función limpiar_html se ha creado una función nueva llamada get_urls_rel y definida en un archivo python que realiza web scrapping mediante la librería Selenium a la página del artículo y extrae las 4 urls adicionales. Este archivo es intergrado en thc_extract_extendido.R mediante la librería reticulate, que implementa la función source_python("prueba_selnium_r.py"). Al ejecutarse esta sentencia se ejecuta el archivo python definido de forma que la función definida en este se guarda en el entorno de R y puede ser llamada.
 
@@ -515,7 +515,7 @@ Explicación y Dificultades:
 
 Pruebas y Resultados:
 ```{r pruebas crawler}
-resultado <- thc_crawler("https://theconversation.com/por-que-tergiversamos-la-informacion-cuando-amenaza-nuestras-creencias-asi-funciona-el-razonamiento-motivado-243555",tiempo_espera =  2, num_articulos = 10)
+resultado <- thc_crawler("https://theconversation.com/por-que-tergiversamos-la-informacion-cuando-amenaza-nuestras-creencias-asi-funciona-el-razonamiento-motivado-243555",tiempo_espera =  2, duracion = 300)
 print(resultado)
 docvarss <- docvars(resultado)
 ```
@@ -526,9 +526,106 @@ docvarss <- docvars(resultado)
 4.1. ¿Tu crawler puede escapar de “referencias circulares” (cuando en los artículos relacionados está el artículo
 inicial)? Si no lo hace, ¿cómo podría hacerlo?.
 
+Sí es capaz de escapar de referencias circulares, debido a que tenemos un vector con las URLs empleadas, y en caso de que la URLs al cual se va a extraer la información se encuentre en dicho
+vector, se omito la URL repetida, y se salta al siguiente URL.
+
 4.2. Deja funcionando tu crawler “toda una noche”, con un tiempo entre artículos de 1 segundo, y un
-artículo inicial de la sección de “Ciencia + Tecnología”. ¿Cuántos artículos has obtenido?. ¿Cuál es el autor
-con más publicaciones?. ¿Y la institución que más publica?. Haz una nube de palabras con las palabras
-clave de los artículos obtenidos. Muestra una gráfica (línea temporal) con las fechas de las publicaciones.
-Alternativamente, si no pudiste hacer el crawler, responde las mismas preguntas sobre el corpus quanteda
-que creaste en el apartado 3.
+artículo inicial de la sección de “Ciencia + Tecnología”. ¿Cuántos artículos has obtenido?. ¿Cuál es el autor con más publicaciones?. ¿Y la institución que más publica?. Haz una nube de palabras con las palabrasclave de los artículos obtenidos. Muestra una gráfica (línea temporal) con las fechas de las publicaciones.
+
+Primero vamos a importar los resultados que hemos obtenido tras la ejecución del programa durante 4 horas (se explicará posteriormente la decisión de ejecutarlo durante 4 horas).
+
+```{r importar resultados}
+load("resultados_4h.RData")
+```
+
+El resultado que obtenemos son de 365 publicaciones
+
+Ahora a partir de los datos obtenemos los autores más frecuentes, observando que el autor con más 
+publicaciones es Raúl Magallón Rosa.
+```{r}
+#Realizamos una ordenación para presentar los autores más frecuentes
+autores_mas_frecuentes<- sort(table(docvarss$autoria), decreasing = TRUE)[1:10]
+autores_mas_frecuentes
+```
+Para ver cuál es la institución con más publicaciones realizamos una operación similar, y teniendo
+como respuesta que la Universidad Complutense de Madrid es la que más publicaciones tiene.
+
+```{r}
+#Realizamos una ordenación para presentar cuáles son las instituciones con más publicaciones
+instituciones_mas_frecuentes <- sort(table(docvarss$institucion), decreasing = TRUE)[1:10]
+instituciones_mas_frecuentes
+```
+Para hacer la nube de palabras empleamos el siguiente código:
+```{r warning = FALSE}
+#Convertimos las keywords en tokens, eliminamos las stopwords para quedarnos sólo
+#con las palabras esenciales, las convertimos en minúsculas y posteriormente en 
+#un dataframe para realizar la nube de palabras
+tokens <- tokens(docvarss$keywords, remove_punct = TRUE)
+sin_stopwords <- tokens_remove(tokens, pattern = stopwords("es"))
+token_minuscula <- tolower(sin_stopwords)
+dfm <- dfm(tokens(token_minuscula))
+#Asignamos una semilla para evitar la aletoriedad
+set.seed(123)
+nube_keywords <- quanteda.textplots::textplot_wordcloud(dfm)
+nube_keywords
+```
+Tras convertir en tokens (sólo las palabras), eliminamos los stopwords para obtener las palabras 
+relevantes y las pasamos a minúscula para que el formato sea homogéneo, y no considere una misma
+palabra como dos diferentes por el hecho del formato. Finalmente asignamos la semilla 123 para
+evitar la aletoriedad a la hora de generar la nube de palabras.
+
+Para realizar el timeline desarrollado el siguiente código:
+```{r}
+library(ggplot2)
+#asignamos una lista para su posterior uso a la hora de modificar las fechas
+meses <- c("enero" = "01", "febrero" = "02", "marzo" = "03", "abril" = "04", 
+           "mayo" = "05", "junio" = "06", "julio" = "07", "agosto" = "08", 
+           "septiembre" = "09", "octubre" = "10", "noviembre" = "11", "diciembre" = "12")
+
+publicacion_cambiado <- docvarss$publicacion
+
+#cambiar el nombre de los meses por su correspondiente valor numérico
+for (mes in names(meses)) {
+  publicacion_cambiado <- gsub(mes, meses[mes], publicacion_cambiado, ignore.case = TRUE)
+}
+
+#Sólo nos quedamos con la fecha y eliminamos la hora
+solo_fecha <- lapply(publicacion_cambiado, function(x){
+  substr(x, 1, nchar(x) - 10)
+})
+#Modificamos la separación acorde según el formato de las funciones empleadas
+fecha_final <- gsub("\\s", "-", solo_fecha)
+
+#Convertimos el string en una fecha,m  y posteriormente en un dataframe
+fechas <- as.Date(fecha_final, format = "%d-%m-%Y")
+datos <- data.frame(
+  fecha = fechas
+)
+
+#creamos un rango de fechas para el índice del timeline
+rango_fechas <- seq(min(fechas), max(fechas), by = "6 month")
+
+#creación del timeline
+ggplot(datos, aes(x = fechas)) +
+  geom_segment(aes(xend = fechas, y = 0, yend = 1), color = "blue", size = 0.5) + 
+  scale_x_date(
+    breaks = rango_fechas, 
+    date_labels = "%d-%m-%Y"
+  ) + 
+  labs(x = "Fecha", y = NULL, title = "Línea Temporal") +
+  theme_minimal() +
+  theme(
+    axis.text.y = element_blank(), 
+    axis.text.x = element_text(angle = 45, hjust = 1)
+  )
+```
+Primero hemos tenido que convertir los nombres de los meses a sus correspondientes valores 
+númericos para la correcta interpretación en as.Date, citando también algunos cambios de 
+formato (por ejemplo los espacios por "-").
+También creamos una leyenda con intervalos de fecha equiespaciados (6 meses), para una mejor 
+compresión de los resultados, y pintadndo la fecha de cada publicación como una línea vertical.
+
+Dificultades:
+La principal dificultad que hemos enfrentado ha sido durante la ejecución del programa. A escalas pequeñas, como sesiones de 5 minutos, no se generaban ciertos pop-ups que aparecen de manera completamente aleatoria. Por esta razón, hemos tenido que monitorizar el programa durante sesiones más largas para identificar todos los pop-ups que surgían.
+
+Además, decidimos limitar las sesiones de ejecución a 4 horas después de observar que, al extenderlas a 8 horas, aparecía un mensaje indicando un error fatal. Sospechamos que este problema está relacionado con un consumo excesivo de memoria RAM, ya que el programa maneja listas y dataframes de gran tamaño, una hipótesis respaldada por consultas realizadas en varios foros.
