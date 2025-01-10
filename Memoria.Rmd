@@ -278,14 +278,114 @@ Enunciado: Haz un programa thc_crawler.R ...
 
 Código fuente:
 ```{r crawler}
+library(rvest)
+library(httr)
+library(quanteda)
+library(reticulate)
+library(ggplot2)
 
+limpiar_html <- function(lineas){
+  
+  contenido <- grep('.*<p>.*</p>',lineas, perl = TRUE, value = TRUE)
+  solo_parrafos <- contenido[-grep('.*<p><.*>.*</.*></p>', contenido, perl = TRUE)]
+  parrafos_sin_ws <- trimws(solo_parrafos, which = "both", whitespace = "[ \t\r\n]")
+  sin_marks_parrafo <- gsub('<p>(.*)</p>', '\\1', parrafos_sin_ws)
+  patron_etiquetas <- '<(/?a.*?|/?em|/?li|/?strong|/?div.*?)>'
+  sin_etiquetas <- sapply(sin_marks_parrafo, function(x) gsub(patron_etiquetas, '', x))
+  contenido_limpio <- paste(sin_etiquetas, collapse = "\n")
+  
+  return(contenido_limpio)
+}
 
+source_python("prueba_selnium_r.py")
+thc_crawler <- function(url_articulo, tiempo_espera, duracion) {
+  # Llamar al crawler de Python para obtener las URLs relacionadas
+  urls <- get_urls_rel(url_articulo)
+  
+  if (is.null(urls)) {
+    stop("No se pudieron obtener URLs relacionadas.")
+  }
+  
+  corpus <- list()  # Para almacenar los artículos descargados
+  visited_urls <- c()  # Para rastrear las URLs que ya hemos visitado
+  
+  # Mientras no hayamos llegado al tiempo impuesto
+  inicio <- Sys.time()
+  while(as.numeric(difftime(Sys.time(), inicio, units = "secs")) < duracion) {
+    # Elegir una URL relacionada de la lista (solo si no se ha visitado antes)
+    url <- urls[1]
+    urls <- urls[-1]  # Eliminar la URL seleccionada de la lista de URLs a explorar
+    if (url %in% visited_urls) {
+      next  # Si ya hemos visitado esta URL, saltamos al siguiente
+    }
+    
+    # Agregar la URL a la lista de URLs visitadas
+    visited_urls <- c(visited_urls, url)
+    
+    # Descargar contenido
+    contenido <- tryCatch({
+      readLines(url, warn = FALSE)
+    }, error = function(e) {
+      message(paste("Error al descargar la URL:", url))
+      return(NULL)
+    })
+    
+    if (is.null(contenido)) next
+    
+    # Limpiar la información
+    texto <- limpiar_html(contenido)
+    
+    # Guardar en el corpus
+    documento <- list(
+      texto = texto,
+      url = url
+    )
+    corpus[[length(corpus) + 1]] <- documento
+    
+    # Obtener más URLs relacionadas del artículo actual
+    urls_relacionadas <- get_urls_rel(url)
+    
+    # Añadir estas nuevas URLs a la lista de URLs a explorar
+    if (!is.null(urls_relacionadas)) {
+      # Filtrar URLs para que no estén ya en la lista
+      urls <- unique(c(urls, setdiff(urls_relacionadas, visited_urls)))
+    }
+    
+    Sys.sleep(tiempo_espera)  # Esperar antes de cada nueva petición
+  }
+  
+  # Crear un corpus de quanteda con los textos descargados
+  docs <- sapply(corpus, function(doc) doc$texto)
+  metadata <- data.frame(
+    url = sapply(corpus, function(doc) ifelse(is.null(doc$url), "", doc$url)),
+    stringsAsFactors = FALSE
+  )
+  
+  quanteda_corpus <- corpus(docs, docvars = metadata)
+  return(quanteda_corpus)
+}
 ```
 
 
 Explicación y Dificultades:
 
+El objetivo del archivo __crawler.R__ es implementar un crawler básico, recopilando el contenido de artículos y sus URLs relacionándolos mediante un corpus y sus docvars. Este programa está diseñado para explorar un número  de artículos en función de un tiempo de ejecución predefinido. Se parte de una URL inicial de un artículo, y mediante la función get_urls_rel, se extraen las URLs de los artículos relacionados para explorarlos recursivamente.
+
+El proceso del crawler comienza estableciendo un límite de tiempo total de ejecución (duracion) y un intervalo de espera entre iteraciones (tiempo_espera) para evitar sobrecargar el servidor. Durante cada iteración, se selecciona una URL no visitada de la lista de relacionadas, se descarga su contenido mediante readLines, y se limpia el texto utilizando la función limpiar_html. Este contenido se almacena en el corpus, junto con su URL como docvar.
+
+Además se añaden varios manejos de errores. Por ejemplo, si la función get_urls_rel no retorna resultados, el programa finaliza con un mensaje de error. Además, si readLines no puede descargar el contenido de una URL, se guarda la excepción y se registra el fallo pero no se interrumpe el proceso principal.
+
+Para mejorar la eficiencia del tiempo y las URLs se lleva un registro de las URLs ya visitadas para evitar duplicaciones, y se asegura que el crawler termine en el tiempo definido. 
+
 Pruebas y Resultados:
+
+```{r crawler pruebas}
+
+resultado <- thc_crawler("https://theconversation.com/por-que-tergiversamos-la-informacion-cuando-amenaza-nuestras-creencias-asi-funciona-el-razonamiento-motivado-243555",tiempo_espera =  1, duracion = 28800)
+print(resultado)
+docvarss <- docvars(resultado)
+
+```
 
 # Pregunta 4
 Enunciado: Modifica el programa anterior para incluir esta información como docvars.
