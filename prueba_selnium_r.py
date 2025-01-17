@@ -1,3 +1,13 @@
+#En el caso de que no se tenga selenium instalado
+import subprocess
+import sys
+
+try:
+    import selenium
+except ImportError:
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "selenium"])
+    import selenium
+    
 import time
 from selenium import webdriver
 from selenium.webdriver.common.by import By
@@ -22,7 +32,7 @@ def get_urls_rel(articulo: str, timeout: int = 60) -> Optional[List[str]]:
                 EC.element_to_be_clickable((By.XPATH, '//*[@id="didomi-notice-agree-button"]'))
             ).click()
         except Exception:
-            print("Cookies no encontradas")
+            return None
 
         # Manejo de pop-ups
         try:
@@ -33,7 +43,7 @@ def get_urls_rel(articulo: str, timeout: int = 60) -> Optional[List[str]]:
             )
             popup.click()
         except Exception:
-            print("No hay popup1")
+            pass
 
         try:
             if time.time() - start_time > timeout:
@@ -43,7 +53,7 @@ def get_urls_rel(articulo: str, timeout: int = 60) -> Optional[List[str]]:
             )
             popup2.click()
         except Exception:
-            print("No hay popup2")
+            pass
 
         # Scroll y búsqueda de URLs relacionadas
         try:
@@ -64,15 +74,12 @@ def get_urls_rel(articulo: str, timeout: int = 60) -> Optional[List[str]]:
             urls_relacionadas = list(set(element.get_attribute("href") for element in elements))
 
         except Exception as e:
-            print("No hay URLs o ocurrió un error:", str(e))
             return None
 
     except TimeoutError as e:
-        print("El proceso tardó más de 60 segundos y fue terminado:", str(e))
         return None
 
     except Exception as e:
-        print("Ha ocurrido un error al acceder al artículo:", str(e))
         return None
 
     finally:
@@ -81,10 +88,3 @@ def get_urls_rel(articulo: str, timeout: int = 60) -> Optional[List[str]]:
 
     return urls_relacionadas
 
-
-# Prueba
-urls = get_urls_rel(
-    "https://theconversation.com/por-que-tergiversamos-la-informacion-cuando-amenaza-nuestras-creencias-asi-funciona-el-razonamiento-motivado-243555",
-    timeout=60
-)
-print(urls)

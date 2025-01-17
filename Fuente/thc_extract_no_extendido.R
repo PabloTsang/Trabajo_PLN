@@ -1,6 +1,8 @@
+if (!requireNamespace("rvest", quietly = TRUE)) install.packages("rvest")
+if (!requireNamespace("httr", quietly = TRUE)) install.packages("httr")
+
 library(rvest)
 library(httr)
-library(reticulate)
 
 # función de obtención de contenido del HTML y limpieza de este
 limpiar_html <- function(lineas){
@@ -16,8 +18,7 @@ limpiar_html <- function(lineas){
   return(contenido_limpio)
 }
 
-source_python("prueba_selnium_r.py")
-# función principal, obtención del HTML a partir del url y retorna en artículo limpio mediante limpiar_html además de la lista de url relacionadas
+# función principal, obtención del HTML a partir del url y retorna en artículo limpio mediante limpiar_html
 extraer_articulo <- function(url){
   contenido <- tryCatch({
     readLines(url, warn = FALSE)
@@ -38,18 +39,12 @@ extraer_articulo <- function(url){
     return(NULL)
   }
   
-  # obtener lista de urls relacionadas
-  urls_rel <- get_urls_rel(url)
-  
-  return(list(texto = texto, urls_rel = urls_rel))
+  return(texto)
 }
 
-
-#prueba 
+# prueba:
 
 url_art <- "https://theconversation.com/los-dumbphones-o-telefonos-tontos-una-ayuda-en-la-tendencia-de-la-desconexion-digital-246452"
-artic_con_urls <- extraer_articulo(url_art)
-articulo <- artic_con_urls$texto
-urls <- artic_con_urls$urls_rel
+articulo <- extraer_articulo(url_art)
 cat(articulo)
-print(urls)
+

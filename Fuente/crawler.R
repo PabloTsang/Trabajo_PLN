@@ -1,3 +1,9 @@
+if (!requireNamespace("rvest", quietly = TRUE)) install.packages("rvest")
+if (!requireNamespace("httr", quietly = TRUE)) install.packages("httr")
+if (!requireNamespace("reticulate", quietly = TRUE)) install.packages("reticulate")
+if (!requireNamespace("ggplot2", quietly = TRUE)) install.packages("ggplot2")
+if (!requireNamespace("quanteda", quietly = TRUE)) install.packages("quanteda")
+
 library(rvest)
 library(httr)
 library(quanteda)

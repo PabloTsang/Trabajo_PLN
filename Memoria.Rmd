@@ -17,19 +17,23 @@ Emails de los integrantes y tareas:
 
 
 ## Introducción
-La práctica en cuestión tiene como objetivo desarrollar un crawler básico para una página web publicadora de artículos científicos
-llamada The Conversation (THC). Este funcionará de forma que se recolecten el texto de los artículos en documentos con sus respectivas
-urls como docvars además de otra información relevante del artículo, para esto se tendrá que escribir código que permita extraer y 
-limpiar los artículos, que permita obtener una lista de 4 urls correspondientes a artículos relacionados los cuales también se incluirán
-en el corpus, y por supuesto el crawler en sí.
+La práctica en cuestión tiene como objetivo desarrollar un crawler básico para una página web publicadora de artículos científicos llamada The Conversation (THC). Este funcionará de forma que se recolecten el texto de los artículos en documentos con sus respectivas urls como docvars además de otra información relevante del artículo, para esto se tendrá que escribir código que permita extraer limpiar los artículos, que permita obtener una lista de 4 urls correspondientes a artículos relacionados los cuales también se incluirán en el corpus, y por supuesto el crawler en sí.
+
 Finalmente, con los datos recopilados se podrán realizar análisis para responder preguntas sobre estadísticas de publicación y contenido, empleando técnicas de análisis textual y visualización de datos.
 
+*Nota para el lector: No es necesario ejecutar los apartados marcados como "Código fuente".
 
 # Pregunta 1
 Enunciado: Haz un programa thc_extract.R que lea un fichero .html y genere el texto del artículo.
+Pablo Tsang Chang: 80%
+Lucia Martinez Miramontes: 10%
+José García Arocas: 10%
 
 Código fuente:
-```{r extract no extendido}
+```{r, warning=FALSE}
+if (!requireNamespace("rvest", quietly = TRUE)) install.packages("rvest")
+if (!requireNamespace("httr", quietly = TRUE)) install.packages("httr")
+
 library(rvest)
 library(httr)
 
@@ -79,7 +83,7 @@ El objetivo del archivo thc_extract.R es extraer a partir de un fichero html cor
 
 Para esto se ha definido una función limpiar_html que realiza tanto la extracción del texto del archivo html como la limpieza de este, y para completar el archivo R se añade una función que extrae el texto directamente de la url correspondiente al archivo de la página THC y que utiliza la función anterior para obtener el texto final, con el objetivo de realizar pruebas.
 
-La función limpiar_html recibe como parámetro de entrada la cadena de texto que consiste en el contenido HTML extraído de la página web, primeramente se limita a extraer todos los párrafos de dicho HTML, es decir, todo texto que se ecuentra entre las etiquetas <p> y </p>, con la expresión regular ".*<p>.*</p>" y permitiendo las expresiones regulares Perl, seguidamente se elimina del vector contenido resultante aquellos párrafos que contienen únicamente otras etiquetas HTML como "<p><span>...</span></p>", de esta manera eliminamos todo párrafo que no contenga texto del artículo. Se eliminan los espacios en blanco con trimws incluyendo tabulaciones y saltos de línea. Se eliminan ya del texto las etiquetas HTML, empezando por las de párrafos y luego las etiquetas de tipo <a>, <em>, <li>, <strong> y <div>, además en la expresión regular se usa /? para que se capturen tanto las etiquetas de apertura como las de cerrar. Esto se hace mediante sapply que aplica el gsub a cada párrafo. Ya finalmente con el vector de párrafos llamado sin_etiquetas unimos todos sus elementos usando el salto de línea "\n" como unión para generar lo que sería el texto del artículo completamente limpio y devolverlo.
+La función limpiar_html recibe como parámetro de entrada la cadena de texto que consiste en el contenido HTML extraído de la página web, primeramente se limita a extraer todos los párrafos de dicho HTML, es decir, todo texto que se ecuentra entre las etiquetas <p> y </p>, con la expresión regular ".*<p>.*</p>" y permitiendo las expresiones regulares Perl, seguidamente se elimina del vector contenido resultante aquellos párrafos que contienen únicamente otras etiquetas HTML como "<p><span>...</span></p>", de esta manera eliminamos todo párrafo que no contenga texto del artículo. Se eliminan los espacios en blanco con trimws incluyendo tabulaciones y saltos de línea. Se eliminan ya del texto las etiquetas HTML, empezando por las de párrafos y luego las etiquetas de tipo <a>, <em>, <li>, <strong> y <div>, además en la expresión regular se usa /? para que se capturen tanto las etiquetas de apertura como las de cerrar. Esto se hace mediante sapply que aplica el gsub a cada párrafo. Ya finalmente con el vector de párrafos llamado sin_etiquetas unimos todos sus elementos usando el salto de línea como unión para generar lo que sería el texto del artículo completamente limpio y devolverlo.
 
 Finalmente en la fución extraer_artículo como se ha explicado antes simplemente se extrae lo que sería la cadena de texto HTML de la url con readLines y usando tryCatch para poder manejar casos de error como errores de network o urls inválidas, devolviendo un mensaje y retornando NULL en la función, con este contenido extraído simplemente se aplica la función limpiar_html para devolver el texto limpio y se añade el manejo de ciertos casos como el de que el contenido extraído del url sea vacío o que el texto limpio de ese sea también vacío, en ambos casos retornando NULL. 
 
@@ -87,13 +91,13 @@ Es importante notar que al saber que se estará trabajando con artículos todos 
 
 Pruebas y Resultados:
 
-```{r extract pruebas}
-
+```{r}
 echo = TRUE
 url_art <- "https://theconversation.com/los-dumbphones-o-telefonos-tontos-una-ayuda-en-la-tendencia-de-la-desconexion-digital-246452"
 articulo <- extraer_articulo(url_art)
-cat(articulo)
-
+substring(articulo, 1, 500)
+print("...")
+substring(articulo, nchar(articulo)-500, nchar(articulo))
 ```
 
 
@@ -101,8 +105,16 @@ cat(articulo)
 # Pregunta 2
 Enunciado: Extiende el programa anterior para que también se muestren las URLs de los artículos relacionados.
 
+Pablo Tsang Chang: 33%
+Lucia Martinez Miramontes: 33%
+José García Arocas: 33%
+
 Código fuente (archivo):
-```{r extract extendido}
+```{r, warning=FALSE}
+if (!requireNamespace("rvest", quietly = TRUE)) install.packages("rvest")
+if (!requireNamespace("httr", quietly = TRUE)) install.packages("httr")
+if (!requireNamespace("reticulate", quietly = TRUE)) install.packages("reticulate")
+
 library(rvest)
 library(httr)
 library(reticulate)
@@ -155,7 +167,17 @@ extraer_articulo <- function(url){
 
 
 Código fuente (archivo python para scrapping):
-```{python function}
+```{python function, eval=FALSE}
+#En el caso de que no se tenga selenium instalado
+import subprocess
+import sys
+
+try:
+    import selenium
+except ImportError:
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "selenium"])
+    import selenium
+    
 import time
 from selenium import webdriver
 from selenium.webdriver.common.by import By
@@ -180,7 +202,7 @@ def get_urls_rel(articulo: str, timeout: int = 60) -> Optional[List[str]]:
                 EC.element_to_be_clickable((By.XPATH, '//*[@id="didomi-notice-agree-button"]'))
             ).click()
         except Exception:
-            print("Cookies no encontradas")
+            return None
 
         # Manejo de pop-ups
         try:
@@ -191,7 +213,7 @@ def get_urls_rel(articulo: str, timeout: int = 60) -> Optional[List[str]]:
             )
             popup.click()
         except Exception:
-            print("No hay popup1")
+            pass
 
         try:
             if time.time() - start_time > timeout:
@@ -201,7 +223,7 @@ def get_urls_rel(articulo: str, timeout: int = 60) -> Optional[List[str]]:
             )
             popup2.click()
         except Exception:
-            print("No hay popup2")
+            pass
 
         # Scroll y búsqueda de URLs relacionadas
         try:
@@ -222,15 +244,12 @@ def get_urls_rel(articulo: str, timeout: int = 60) -> Optional[List[str]]:
             urls_relacionadas = list(set(element.get_attribute("href") for element in elements))
 
         except Exception as e:
-            print("No hay URLs o ocurrió un error:", str(e))
             return None
 
     except TimeoutError as e:
-        print("El proceso tardó más de 60 segundos y fue terminado:", str(e))
         return None
 
     except Exception as e:
-        print("Ha ocurrido un error al acceder al artículo:", str(e))
         return None
 
     finally:
@@ -259,16 +278,14 @@ Volviendo al archivo R, la modificación incluye una llamada a la función get_u
 
 Pruebas y Resultados:
 
-```{r extract pruebas}
-
+```{r, warning=FALSE}
 echo = TRUE
 url_art <- "https://theconversation.com/los-dumbphones-o-telefonos-tontos-una-ayuda-en-la-tendencia-de-la-desconexion-digital-246452"
 artic_con_urls <- extraer_articulo(url_art)
-articulo <- artic_con_urls$texto
-urls <- artic_con_urls$urls_rel
-cat(articulo)
-print(urls)
-
+substring(artic_con_urls$texto, 1, 500)
+print("...")
+substring(articulo, nchar(artic_con_urls$texto)-500, nchar(artic_con_urls$texto))
+print(artic_con_urls$urls_rel)
 ```
 
 
@@ -276,8 +293,18 @@ print(urls)
 # Pregunta 3
 Enunciado: Haz un programa thc_crawler.R ...
 
+Abdelaziz Aarourou: 50%
+Daniel Barahona Amor: 50%
+
 Código fuente:
-```{r crawler}
+```{r}
+if (!requireNamespace("rvest", quietly = TRUE)) install.packages("rvest")
+if (!requireNamespace("httr", quietly = TRUE)) install.packages("httr")
+if (!requireNamespace("reticulate", quietly = TRUE)) install.packages("reticulate")
+if (!requireNamespace("ggplot2", quietly = TRUE)) install.packages("ggplot2")
+if (!requireNamespace("quanteda", quietly = TRUE)) install.packages("quanteda")
+
+
 library(rvest)
 library(httr)
 library(quanteda)
@@ -379,19 +406,26 @@ Para mejorar la eficiencia del tiempo y las URLs se lleva un registro de las URL
 
 Pruebas y Resultados:
 
-```{r crawler pruebas}
-
-resultado <- thc_crawler("https://theconversation.com/por-que-tergiversamos-la-informacion-cuando-amenaza-nuestras-creencias-asi-funciona-el-razonamiento-motivado-243555",tiempo_espera =  1, duracion = 28800)
-print(resultado)
+```{r}
+resultado <- thc_crawler("https://theconversation.com/por-que-tergiversamos-la-informacion-cuando-amenaza-nuestras-creencias-asi-funciona-el-razonamiento-motivado-243555",tiempo_espera =  1, duracion = 300)
+head(resultado)
 docvarss <- docvars(resultado)
 
 ```
 
 # Pregunta 4
 Enunciado: Modifica el programa anterior para incluir esta información como docvars.
+Abdelaziz Aarourou: 50%
+Daniel Barahona Amor: 50%
 
 Código fuente:
-```{r crawler modificado}
+```{r, eval = FALSE}
+if (!requireNamespace("rvest", quietly = TRUE)) install.packages("rvest")
+if (!requireNamespace("httr", quietly = TRUE)) install.packages("httr")
+if (!requireNamespace("reticulate", quietly = TRUE)) install.packages("reticulate")
+if (!requireNamespace("ggplot2", quietly = TRUE)) install.packages("ggplot2")
+if (!requireNamespace("quanteda", quietly = TRUE)) install.packages("quanteda")
+
 library(rvest)
 library(httr)
 library(quanteda)
@@ -614,14 +648,15 @@ ggplot(datos, aes(x = fechas)) +
 Explicación y Dificultades: 
 
 Pruebas y Resultados:
-```{r pruebas crawler}
+```{r}
 resultado <- thc_crawler("https://theconversation.com/por-que-tergiversamos-la-informacion-cuando-amenaza-nuestras-creencias-asi-funciona-el-razonamiento-motivado-243555",tiempo_espera =  2, duracion = 300)
-print(resultado)
 docvarss <- docvars(resultado)
+print(head(resultado))
 ```
 
 
 # Cuestiones a responder
+Pablo Tsang Chang: 100%
 
 4.1. ¿Tu crawler puede escapar de “referencias circulares” (cuando en los artículos relacionados está el artículo
 inicial)? Si no lo hace, ¿cómo podría hacerlo?.
@@ -634,7 +669,7 @@ artículo inicial de la sección de “Ciencia + Tecnología”. ¿Cuántos art�
 
 Primero vamos a importar los resultados que hemos obtenido tras la ejecución del programa durante 4 horas (se explicará posteriormente la decisión de ejecutarlo durante 4 horas).
 
-```{r importar resultados}
+```{r}
 load("resultados_4h.RData")
 ```
 
@@ -656,7 +691,12 @@ instituciones_mas_frecuentes <- sort(table(docvarss$institucion), decreasing = T
 instituciones_mas_frecuentes
 ```
 Para hacer la nube de palabras empleamos el siguiente código:
-```{r warning = FALSE}
+```{r, warning = FALSE}
+if (!requireNamespace("quanteda", quietly = TRUE)) install.packages("quanteda")
+if (!requireNamespace("quanteda.textplots", quietly = TRUE)) install.packages("quanteda.textplots")
+
+library(quanteda)
+library(quanteda.textplots)
 #Convertimos las keywords en tokens, eliminamos las stopwords para quedarnos sólo
 #con las palabras esenciales, las convertimos en minúsculas y posteriormente en 
 #un dataframe para realizar la nube de palabras
@@ -667,7 +707,6 @@ dfm <- dfm(tokens(token_minuscula))
 #Asignamos una semilla para evitar la aletoriedad
 set.seed(123)
 nube_keywords <- quanteda.textplots::textplot_wordcloud(dfm)
-nube_keywords
 ```
 Tras convertir en tokens (sólo las palabras), eliminamos los stopwords para obtener las palabras 
 relevantes y las pasamos a minúscula para que el formato sea homogéneo, y no considere una misma
@@ -675,7 +714,9 @@ palabra como dos diferentes por el hecho del formato. Finalmente asignamos la se
 evitar la aletoriedad a la hora de generar la nube de palabras.
 
 Para realizar el timeline desarrollado el siguiente código:
-```{r}
+```{r, warning=FALSE}
+if (!requireNamespace("ggplot2", quietly = TRUE)) install.packages("ggplot2")
+
 library(ggplot2)
 #asignamos una lista para su posterior uso a la hora de modificar las fechas
 meses <- c("enero" = "01", "febrero" = "02", "marzo" = "03", "abril" = "04", 
